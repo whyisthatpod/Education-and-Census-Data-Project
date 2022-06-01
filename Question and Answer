@@ -1,0 +1,124 @@
+# How many public high schools are in each zip code? in each state?
+SELECT COUNT(school_name) AS schools, zip_code
+FROM public_hs_data
+GROUP BY zip_code
+ORDER BY 1 DESC;
+
+SELECT COUNT(school_name) AS schools, state_code
+FROM public_hs_data
+GROUP BY 2
+ORDER BY 1 DESC;
+
+# The locale_code column in the high school data corresponds to various levels of urbanization as listed below. Use the CASE statement to display the corresponding locale_text and locale_size in your query result.
+
+SELECT school_name, locale_code,
+
+CASE 
+WHEN locale_code BETWEEN 11 AND 13 THEN 'City'
+WHEN locale_code BETWEEN 21 AND 23 THEN 'Suburb'
+WHEN locale_code BETWEEN 31 AND 33 THEN 'Town'
+WHEN locale_code BETWEEN 41 AND 43 THEN 'Rural'
+ELSE 'No Data'
+END AS 'Urbanization',
+
+CASE WHEN  locale_code < 30 THEN
+CASE substr(locale_code, 2, 1)
+WHEN '1' THEN 'Large'
+WHEN '2' THEN 'Midsize'
+WHEN '3' THEN 'Small'
+END 
+
+WHEN locale_code > 30 THEN 
+CASE substr(locale_code, 2, 1)
+WHEN '1' THEN 'Fringe'
+WHEN '2' THEN 'Distant'
+WHEN '3' THEN 'Remote'
+ELSE 'No data'
+END
+
+END AS 'Size'
+
+FROM public_hs_data;
+
+# What is the minimum, maximum, and average median_household_income of the nation? for each state?
+- for nation
+SELECT MIN(median_household_income), MAX(median_household_income), ROUND(AVG(median_household_income), 2)
+FROM census_data
+WHERE median_household_income IS NOT 'NULL';
+--state by state
+SELECT state_code, MIN(median_household_income), MAX(median_household_income), ROUND(AVG(median_household_income), 2)
+FROM census_data
+WHERE median_household_income IS NOT 'NULL'
+GROUP BY state_code;
+
+# Joint analysis: Join the tables together for even more analysis.
+
+Do characteristics of the zip-code area, such as median household income, influence students’ performance in high school?
+Hint: One option would be to use the CASE statement to divide the median_household_income into income ranges (e.g., <$50k, $50k-$100k, $100k+) and find the average exam scores for each.
+
+SELECT ROUND(AVG(pct_proficient_math), 2) AS 'Average Math', ROUND(AVG(pct_proficient_reading), 2) AS 'Average Reading', ROUND(AVG(median_household_income), 2) AS 'Average Household Income',
+
+CASE 
+WHEN census_data.median_household_income <= 50000 THEN 'Low'
+WHEN census_data.median_household_income BETWEEN 50000 AND 100000 THEN 'Medium'
+WHEN census_data.median_household_income >= 100000 THEN 'High'
+ELSE 'No Data'
+END AS income_level
+
+FROM census_data
+JOIN public_hs_data
+ON census_data.zip_code = public_hs_data.zip_code
+WHERE median_household_income != 'NULL'
+GROUP BY income_level;
+
+# On average, do students perform better on the math or reading exam? Find the number of states where students do better on the math exam, and vice versa.
+
+WITH math_v_reading AS (
+SELECT state_code, ROUND(AVG(pct_proficient_math), 1), ROUND(AVG(pct_proficient_reading), 1),
+
+CASE 
+WHEN AVG(pct_proficient_math) > AVG(pct_proficient_reading) THEN 'Math'
+WHEN AVG(pct_proficient_math) < AVG(pct_proficient_reading) THEN 'Reading'
+WHEN AVG(pct_proficient_math) = AVG(pct_proficient_reading) THEN 'Equal'
+ELSE 'No Data'
+END AS math_or_reading
+
+
+FROM public_hs_data
+WHERE pct_proficient_math IS NOT 'NULL'
+GROUP BY state_code
+)
+SELECT math_or_reading, COUNT(math_or_reading) AS 'States Better At'
+FROM math_v_reading
+GROUP BY math_or_reading;
+
+# What is the average proficiency on state assessment exams for each zip code, and how do they compare to other zip codes in the same state?
+
+WITH statewide AS (
+SELECT state_code, ROUND(AVG(pct_proficient_math), 2) AS average_math_state, ROUND(AVG(pct_proficient_reading), 2) AS average_reading_state
+
+FROM public_hs_data
+GROUP BY state_code
+)
+SELECT statewide.state_code, public_hs_data.zip_code, average_math_state, ROUND(AVG(pct_proficient_math), 2) AS average_math_zip, 
+average_reading_state, ROUND(AVG(pct_proficient_reading), 2) AS average_reading_zip,
+
+CASE 
+WHEN AVG(pct_proficient_math) > average_math_state THEN 'Zip higher than state'
+WHEN AVG(pct_proficient_math) < average_math_state THEN 'Zip lower than state'
+WHEN AVG(pct_proficient_math) = average_math_state THEN 'Equal'
+ELSE 'No Data'
+END AS math_comparison,
+
+CASE
+WHEN AVG(pct_proficient_reading) > average_reading_state THEN 'Zip higher than state'
+WHEN AVG(pct_proficient_reading) < average_reading_state THEN 'Zip lower than state'
+WHEN AVG(pct_proficient_reading) = average_reading_state THEN 'Equal'
+ELSE 'No Data'
+END AS reading_comparison
+
+FROM statewide
+JOIN public_hs_data
+ON statewide.state_code = public_hs_data.state_code
+GROUP BY zip_code
+ORDER BY 1 ASC;
